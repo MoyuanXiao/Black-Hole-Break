@@ -1,0 +1,90 @@
+/**
+ * @file dialog_modern.h
+ * @brief Lightweight modern drawing and hosting for Catime dialogs.
+ */
+
+#ifndef DIALOG_MODERN_H
+#define DIALOG_MODERN_H
+
+#include <windows.h>
+
+typedef struct {
+    BOOL darkMode;
+    BOOL highContrast;
+    COLORREF background;
+    COLORREF surface;
+    COLORREF field;
+    COLORREF border;
+    COLORREF text;
+    COLORREF mutedText;
+    COLORREF accent;
+    COLORREF accentHover;
+    COLORREF warning;
+    COLORREF danger;
+    COLORREF dangerBackground;
+} DialogModernPalette;
+
+typedef enum {
+    DIALOG_MODERN_FEEDBACK_NONE = 0,
+    DIALOG_MODERN_FEEDBACK_VALID,
+    DIALOG_MODERN_FEEDBACK_INVALID
+} DialogModernFeedbackKind;
+
+/** Attach modern chrome and control styling to a resource dialog. */
+BOOL DialogModern_Attach(HWND hwndDlg, int dialogType);
+
+/** Return TRUE when the resource dialog already has a modern host. */
+BOOL DialogModern_IsAttached(HWND hwndDlg);
+
+/** Finalize while hidden and guard the compositor until the first paint. */
+BOOL DialogModern_PrepareForShow(HWND hwndDlg);
+
+/** Show a fully initialized painted window without exposing a blank frame. */
+void DialogModern_ShowPaintedWindow(HWND hwnd, int showCommand);
+
+/** Re-read system colors and redraw the dialog and its children. */
+void DialogModern_Refresh(HWND hwndDlg);
+
+/** Set the text and semantic appearance of a live input feedback label. */
+void DialogModern_SetFeedback(HWND hwndDlg, int controlId,
+                              DialogModernFeedbackKind kind,
+                              const wchar_t* text);
+
+/** Shared DPI and design-token helpers used by specialized dialogs. */
+UINT DialogModern_GetDpi(HWND hwnd);
+int DialogModern_Scale(UINT dpi, int value);
+void DialogModern_SetChildRect96(HWND hwndDlg, int controlId, UINT dpi,
+                                 int x, int y, int width, int height);
+BOOL DialogModern_GetChildRect96(HWND hwndDlg, int controlId, UINT dpi,
+                                 RECT* rect);
+BOOL DialogModern_MeasureText96(HWND hwnd, HFONT font, const wchar_t* text,
+                                UINT dpi, SIZE* size);
+
+void DialogModern_ResolvePalette(DialogModernPalette* palette);
+BOOL DialogModern_CopyPalette(HWND hwnd, DialogModernPalette* palette);
+HFONT DialogModern_CreateFont(UINT dpi, int pixelSize, LONG weight);
+
+/** Shared GDI primitives. Coordinates are physical pixels. */
+void DialogModern_DrawRoundedRect(HDC hdc, const RECT* rect, int cornerDiameter,
+                                  COLORREF fill, COLORREF border,
+                                  int borderWidth);
+/** Draw the shared transparent close button X icon. */
+void DialogModern_DrawCloseButton(HDC hdc, const RECT* rect, UINT dpi,
+                                  BOOL hovered, BOOL focused,
+                                  BOOL highContrast, COLORREF accent,
+                                  COLORREF mutedText);
+void DialogModern_DrawText(HDC hdc, HFONT font, COLORREF color,
+                           const RECT* rect, const wchar_t* text,
+                           UINT format);
+/** Draw the shared title signature stroke below a measured dialog title. */
+void DialogModern_DrawTitleSignature(HDC hdc, const RECT* titleRect, UINT dpi,
+                                     int titleTextWidth, COLORREF accent,
+                                     COLORREF surface, BOOL darkMode,
+                                     BOOL highContrast);
+/** Apply the shared light/dark appearance to a window and native children. */
+void DialogModern_ApplyTheme(HWND hwnd, BOOL darkMode);
+/** Disable system-drawn shadow chrome for a custom popup surface. */
+void DialogModern_DisablePopupShadow(HWND hwnd);
+void DialogModern_ApplyWindowShape(HWND hwnd, UINT dpi, int cornerRadius);
+
+#endif /* DIALOG_MODERN_H */

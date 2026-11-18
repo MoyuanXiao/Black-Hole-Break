@@ -1,0 +1,65 @@
+/**
+ * @file window_config_handlers.h
+ * @brief Configuration reload handlers for WM_APP_*_CHANGED messages
+ */
+
+#ifndef WINDOW_CONFIG_HANDLERS_H
+#define WINDOW_CONFIG_HANDLERS_H
+
+#include <windows.h>
+
+/* ============================================================================
+ * Configuration Reload Handlers
+ * ============================================================================ */
+
+/**
+ * @brief Handle combined config reload after config.ini changes
+ */
+LRESULT HandleAppConfigChanged(HWND hwnd);
+
+/**
+ * @brief Preserve process-local display state on config changes
+ */
+LRESULT HandleAppDisplayChanged(HWND hwnd);
+
+/**
+ * @brief Handle WM_APP_TIMER_CHANGED
+ */
+LRESULT HandleAppTimerChanged(HWND hwnd);
+
+/**
+ * @brief Handle WM_APP_POMODORO_CHANGED
+ */
+LRESULT HandleAppPomodoroChanged(HWND hwnd);
+
+/**
+ * @brief Handle WM_APP_NOTIFICATION_CHANGED
+ */
+LRESULT HandleAppNotificationChanged(HWND hwnd);
+
+/**
+ * @brief Handle WM_APP_HOTKEYS_CHANGED
+ */
+LRESULT HandleAppHotkeysChanged(HWND hwnd);
+
+/**
+ * @brief Handle WM_APP_RECENTFILES_CHANGED
+ */
+LRESULT HandleAppRecentFilesChanged(HWND hwnd);
+
+/**
+ * @brief Preserve process-local color state on config changes
+ */
+LRESULT HandleAppColorsChanged(HWND hwnd);
+
+/**
+ * @brief Preserve the process-local animation speed on config changes
+ */
+LRESULT HandleAppAnimSpeedChanged(HWND hwnd);
+
+/**
+ * @brief Reload shared taskbar-monitor options without replacing local animation
+ */
+LRESULT HandleAppAnimPathChanged(HWND hwnd);
+
+#endif /* WINDOW_CONFIG_HANDLERS_H */

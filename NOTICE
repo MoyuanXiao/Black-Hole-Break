@@ -1,0 +1,38 @@
+Black Hole Break
+Copyright (C) 2026 MoyuanXiao
+
+This product is a derivative of Catime by vladelaina
+(https://github.com/vladelaina/Catime), licensed under the Apache License 2.0
+(https://www.apache.org/licenses/LICENSE-2.0).
+
+Copyright (C) 2025-2026 vladelaina
+
+The Apache License 2.0 grants a copyright license and a patent license, and it
+requires that copyright, patent, trademark, and attribution notices that apply
+to the covered work be retained. Those upstream notices remain in effect.
+"Catime" is the name of the original project. It is not the name of this product.
+
+Modifications in this repository, including the desktop black-hole overlay and
+the Black Hole Break rebrand, are Copyright (C) 2026 MoyuanXiao and are
+distributed under the same Apache License 2.0.
+
+The black-hole shader in include/blackhole_overlay_shader.h includes
+adaptations of the HLSL shader from blackhole-timer
+(https://github.com/cabbagehao/blackhole-timer), itself derived from
+ghostty-blackhole (https://github.com/s0xDk/ghostty-blackhole). The upstream
+shader credits Eric Bruneton's Black Hole Shader
+(https://ebruneton.github.io/black_hole_shader/). The MIT license text for
+that shader is in THIRD_PARTY_NOTICES.md and must be retained.
+
+Font license notes:
+
+- asset/font/MIT/LICENSE covers the MIT-licensed embedded font.
+- asset/font/SIL/SIL Open Font License.txt covers the SIL Open Font License fonts.
+- The OFL fonts under asset/font/OFL/ remain under the SIL Open Font License.
+
+The original Catime software icon (asset/icon/catime.ico and Images/catime.png)
+and the upstream wallpaper credited to 猫屋敷梨梨Official
+(https://space.bilibili.com/26087398) are that artist's copyright. They may
+not be used commercially without authorization. This repository still embeds
+the upstream icon because a replacement has not been added. That artwork is
+not Black Hole Break's brand logo. A replacement icon is pending.

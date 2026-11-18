@@ -1,0 +1,264 @@
+#include <windows.h>
+#include <shellapi.h>
+#include "tray_internal.h"
+#include "tray/tray_events.h"
+#include "tray/tray_event_protocol.h"
+#include "tray/tray_menu.h"
+#include "tray/tray.h"
+#include "color/color.h"
+#include "timer/timer.h"
+#include "timer/main_timer.h"
+#include "language.h"
+#include "window_procedure/window_events.h"
+#include "window/window_core.h"
+#include "timer/timer_events.h"
+#include "drawing.h"
+#include "audio_player.h"
+#include "config.h"
+#include "log.h"
+#include "../resource/resource.h"
+#include <wchar.h>
+#define TRAY_HOVER_CHECK_TIMER_ID 42422
+#define TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS 200
+#define TRAY_HOVER_CHECK_IDLE_INTERVAL_MS 1000
+#define TRAY_HOVER_NEAR_MARGIN_PX 96
+#define CATIME_MAIN_WINDOW_CLASS_NAME L"CatimeWindowClass"
+static UINT_PTR g_hoverCheckTimer = 0;
+static UINT g_hoverCheckIntervalMs = 0;
+static HWND g_trayEventHwnd = NULL;
+static void CALLBACK TrayHoverCheckTimerProc(HWND hwnd, UINT msg, UINT_PTR id, DWORD time);
+static BOOL IsValidTrayEventWindow(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) {
+        return FALSE;
+    }
+    DWORD processId = 0;
+    GetWindowThreadProcessId(hwnd, &processId);
+    if (processId != GetCurrentProcessId()) {
+        return FALSE;
+    }
+    wchar_t className[64] = {0};
+    if (GetClassNameW(hwnd, className, _countof(className)) == 0) {
+        return FALSE;
+    }
+    return wcscmp(className, CATIME_MAIN_WINDOW_CLASS_NAME) == 0;
+}
+static BOOL SetTrayHoverCheckInterval(HWND hwnd, UINT intervalMs) {
+    if (!IsValidTrayEventWindow(hwnd) || !IsTrayIconActive(hwnd)) {
+        return FALSE;
+    }
+    if (g_hoverCheckTimer &&
+        g_trayEventHwnd == hwnd &&
+        g_hoverCheckIntervalMs == intervalMs) {
+        return TRUE;
+    }
+    UINT_PTR newTimer = SetTimer(hwnd, TRAY_HOVER_CHECK_TIMER_ID,
+                                 intervalMs, TrayHoverCheckTimerProc);
+    if (!newTimer) {
+        LOG_WARNING("Tray hover detection timer creation failed (error=%lu)",
+                    GetLastError());
+        return FALSE;
+    }
+    g_hoverCheckTimer = newTimer;
+    g_hoverCheckIntervalMs = intervalMs;
+    g_trayEventHwnd = hwnd;
+    return TRUE;
+}
+static void CALLBACK TrayHoverCheckTimerProc(HWND hwnd, UINT msg, UINT_PTR id, DWORD time) {
+    (void)time;
+    if (msg != WM_TIMER || id != TRAY_HOVER_CHECK_TIMER_ID) {
+        return;
+    }
+    if (!g_trayEventHwnd ||
+        hwnd != g_trayEventHwnd ||
+        !IsValidTrayEventWindow(g_trayEventHwnd) ||
+        !IsTrayIconActive(g_trayEventHwnd)) {
+        if (hwnd) {
+            KillTimer(hwnd, TRAY_HOVER_CHECK_TIMER_ID);
+        }
+        if (hwnd == g_trayEventHwnd) {
+            g_hoverCheckTimer = 0;
+            g_hoverCheckIntervalMs = 0;
+            g_trayEventHwnd = NULL;
+            SetTrayTooltipActive(FALSE);
+        }
+        return;
+    }
+    if (IsTrayInteractionSuspended()) {
+        return;
+    }
+    POINT pt = {0};
+    if (!GetCursorPos(&pt)) {
+        return;
+    }
+    BOOL isOverIcon = IsMouseOverTrayIconArea(pt);
+    BOOL isNearIcon = isOverIcon ||
+                      IsMouseNearTrayIconArea(pt, TRAY_HOVER_NEAR_MARGIN_PX);
+    SetTrayTooltipActive(isOverIcon);
+    SetTrayHoverCheckInterval(hwnd,
+                              isNearIcon ?
+                                  TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS :
+                                  TRAY_HOVER_CHECK_IDLE_INTERVAL_MS);
+}
+static void StartTrayHoverDetection(HWND hwnd) {
+    if (!IsValidTrayEventWindow(hwnd) || !IsTrayIconActive(hwnd)) {
+        return;
+    }
+    if (g_hoverCheckTimer &&
+        g_trayEventHwnd == hwnd &&
+        IsValidTrayEventWindow(g_trayEventHwnd)) {
+        return;
+    }
+    HWND previousHwnd = g_trayEventHwnd;
+    UINT_PTR newTimer = SetTimer(hwnd, TRAY_HOVER_CHECK_TIMER_ID,
+                                 TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS,
+                                 TrayHoverCheckTimerProc);
+    if (!newTimer) {
+        LOG_WARNING("Tray hover detection timer creation failed (error=%lu)",
+                    GetLastError());
+        if (g_hoverCheckTimer && !IsValidTrayEventWindow(g_trayEventHwnd)) {
+            g_hoverCheckTimer = 0;
+            g_trayEventHwnd = NULL;
+        }
+        return;
+    }
+    if (g_hoverCheckTimer && previousHwnd != hwnd &&
+        IsValidTrayEventWindow(previousHwnd)) {
+        KillTimer(previousHwnd, TRAY_HOVER_CHECK_TIMER_ID);
+    }
+    g_hoverCheckTimer = newTimer;
+    g_hoverCheckIntervalMs = TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS;
+    g_trayEventHwnd = hwnd;
+}
+void StopTrayHoverDetection(void) {
+    if (IsValidTrayEventWindow(g_trayEventHwnd)) {
+        KillTimer(g_trayEventHwnd, TRAY_HOVER_CHECK_TIMER_ID);
+    }
+    g_hoverCheckTimer = 0;
+    g_hoverCheckIntervalMs = 0;
+    g_trayEventHwnd = NULL;
+    SetTrayTooltipActive(FALSE);
+}
+static inline void OpenUrlInBrowser(const wchar_t* url) {
+    if (!url) return;
+    ShellExecuteW(NULL, L"open", url, NULL, NULL, SW_SHOWNORMAL);
+}
+static inline void ForceWindowRedraw(HWND hwnd) {
+    if (!IsValidTrayEventWindow(hwnd)) return;
+    InvalidateRect(hwnd, NULL, TRUE);
+}
+static inline BOOL RestartTimerWithInterval(HWND hwnd, UINT timerId, UINT interval) {
+    if (timerId == TIMER_ID_MAIN) {
+        return MainTimer_Start(hwnd, interval);
+    }
+    KillTimer(hwnd, timerId);
+    if (!SetTimer(hwnd, timerId, interval, NULL)) {
+        LOG_WARNING("Failed to restart timer %u with interval %u ms (error=%lu)",
+                    timerId, interval, GetLastError());
+        return FALSE;
+    }
+    return TRUE;
+}
+static inline BOOL IsTimerActive(void) {
+    return !CLOCK_SHOW_CURRENT_TIME && (CLOCK_COUNT_UP || CLOCK_TOTAL_TIME > 0);
+}
+void HandleTrayIconMessage(HWND hwnd, WPARAM wParam, LPARAM lParam) {
+    TrayCallbackEvent event = {0};
+    BOOL version4 = g_trayCallbackVersion == NOTIFYICON_VERSION_4;
+    if (!TrayCallback_DecodeCompatible(
+            version4, wParam, lParam,
+            CLOCK_ID_TRAY_APP_ICON, &event)) {
+        return;
+    }
+    if (!IsValidTrayEventWindow(hwnd)) {
+        return;
+    }
+    if (!IsTrayIconActive(hwnd) &&
+        !TryRestoreTrayIconFromCallback(hwnd)) {
+        return;
+    }
+    BOOL interactionSuspended = IsTrayInteractionSuspended();
+    if (!interactionSuspended) {
+        StartTrayHoverDetection(hwnd);
+    }
+    switch (event.kind) {
+        case TRAY_CALLBACK_HOVER_MOVE:
+            if (interactionSuspended) break;
+            SetTrayTooltipActive(TRUE);
+            SetTrayHoverCheckInterval(hwnd, TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS);
+            break;
+        case TRAY_CALLBACK_HOVER_OPEN:
+            if (interactionSuspended) break;
+            SetTrayTooltipActive(TRUE);
+            SetTrayHoverCheckInterval(hwnd, TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS);
+            break;
+        case TRAY_CALLBACK_HOVER_CLOSE:
+            if (interactionSuspended) break;
+            if (!SetTrayHoverCheckInterval(hwnd,
+                                           TRAY_HOVER_CHECK_ACTIVE_INTERVAL_MS)) {
+                POINT pt = {0};
+                if (GetCursorPos(&pt) && !IsMouseOverTrayIconArea(pt)) {
+                    SetTrayTooltipActive(FALSE);
+                }
+            }
+            break;
+        case TRAY_CALLBACK_PRIMARY_MENU:
+            if (interactionSuspended) break;
+            (void)HandleTrayIconMenuActivation(
+                hwnd, WM_LBUTTONUP,
+                event.hasAnchor ? &event.anchor : NULL);
+            break;
+        case TRAY_CALLBACK_SECONDARY_MENU:
+            if (interactionSuspended) break;
+            (void)HandleTrayIconMenuActivation(
+                hwnd, WM_RBUTTONUP,
+                event.hasAnchor ? &event.anchor : NULL);
+            break;
+        default:
+            break;
+    }
+}
+void TogglePauseResumeTimer(HWND hwnd) {
+    if (!IsTimerActive()) {
+        return;
+    }
+    TogglePauseTimer();
+    if (CLOCK_IS_PAUSED) {
+        CLOCK_LAST_TIME_UPDATE = time(NULL);
+        MainTimer_Stop();
+        PauseNotificationSound();
+    } else {
+        if (!RestartTimerWithInterval(hwnd, TIMER_ID_MAIN, GetTimerInterval())) {
+            LOG_WARNING("Failed to resume timer; keeping timer paused");
+            TogglePauseTimer();
+            ForceWindowRedraw(hwnd);
+            return;
+        }
+        ResumeNotificationSound();
+    }
+    ForceWindowRedraw(hwnd);
+}
+void SetStartupMode(HWND hwnd, const char* mode) {
+    if (!WriteConfigStartupMode(mode)) {
+        LOG_WARNING("Failed to save startup mode: %s", mode ? mode : "(null)");
+        return;
+    }
+    HMENU hMenu = GetMenu(hwnd);
+    if (hMenu) {
+        ForceWindowRedraw(hwnd);
+    }
+}
+void OpenUserGuide(void) {
+    OpenUrlInBrowser(L"https://github.com/MoyuanXiao/Black-Hole-Break#black-hole-break");
+}
+void OpenSupportPage(void) {
+    OpenUrlInBrowser(L"https://github.com/MoyuanXiao/Black-Hole-Break");
+}
+void OpenVlainaPage(void) {
+    OpenUrlInBrowser(URL_VLAINA);
+}
+void OpenBongoCatPage(void) {
+    OpenUrlInBrowser(URL_BONGOCAT);
+}
+void OpenFeedbackPage(void) {
+    OpenUrlInBrowser(L"https://github.com/MoyuanXiao/Black-Hole-Break/issues");
+}

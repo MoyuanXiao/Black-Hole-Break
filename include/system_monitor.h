@@ -1,0 +1,147 @@
+/**
+ * @file system_monitor.h
+ * @brief Lightweight system monitor with caching
+ * 
+ * Configurable refresh intervals balance accuracy vs overhead (500ms for real-time,
+ * 2-5s for background). Atomic initialization ensures thread safety.
+ * Network speed uses per-interface delta tracking with 32-bit counter wrap handling.
+ */
+
+#ifndef SYSTEM_MONITOR_H
+#define SYSTEM_MONITOR_H
+
+#include <windows.h>
+
+typedef enum {
+    SYSTEM_MONITOR_SNAPSHOT_CPU_MEMORY = 1u << 0,
+    SYSTEM_MONITOR_SNAPSHOT_NETWORK = 1u << 1
+} SystemMonitorSnapshotFields;
+
+typedef struct {
+    float cpuPercent;
+    float memoryPercent;
+    float uploadBytesPerSecond;
+    float downloadBytesPerSecond;
+    ULONGLONG revision;
+    ULONGLONG basicSampleTick;
+    ULONGLONG networkSampleTick;
+    BOOL cpuAvailable;
+    BOOL memoryAvailable;
+    BOOL networkAvailable;
+} SystemMonitorSnapshot;
+
+/**
+ * @brief Initialize monitor (thread-safe, default 1000ms interval)
+ * 
+ * @details
+ * Sets up CPU baseline and network interface monitoring.
+ * Atomic operations ensure safe multi-call.
+ * 
+ * @note Subsequent calls ignored
+ */
+void SystemMonitor_Init(void);
+
+/**
+ * @brief Shutdown and release resources
+ * 
+ * @note Safe to call if never initialized
+ */
+void SystemMonitor_Shutdown(void);
+
+/**
+ * @brief Check whether monitor resources are currently initialized
+ * @return TRUE if initialized, FALSE otherwise
+ */
+BOOL SystemMonitor_IsInitialized(void);
+
+/**
+ * @brief Set minimum refresh interval
+ * @param intervalMs Interval (0 = default 1000ms)
+ * 
+ * @details
+ * Lower = fresher data but more overhead. Values below 500ms are clamped.
+ * Recommended: 500-1000ms (real-time), 2000-5000ms (background).
+ */
+void SystemMonitor_SetUpdateIntervalMs(DWORD intervalMs);
+
+/**
+ * @brief Force immediate refresh (bypasses interval)
+ * 
+ * @details
+ * Updates all cached values immediately. Use after startup or when
+ * real-time accuracy critical.
+ * 
+ * @note Brief resource usage spike
+ */
+void SystemMonitor_ForceRefresh(void);
+
+/**
+ * @brief Get CPU usage (auto-refreshes if stale)
+ * @param outPercent Output (0.0-100.0)
+ * @return TRUE on success
+ * 
+ * @details
+ * Calculated from kernel+user time delta between samples.
+ * Auto-initializes if needed.
+ * 
+ * @note First call may return 0.0 until baseline established
+ */
+BOOL SystemMonitor_GetCpuUsage(float* outPercent);
+
+/**
+ * @brief Get memory usage (auto-refreshes if stale)
+ * @param outPercent Output (0.0-100.0)
+ * @return TRUE on success
+ * 
+ * @note Auto-initializes if needed
+ */
+BOOL SystemMonitor_GetMemoryUsage(float* outPercent);
+
+/**
+ * @brief Get CPU and memory in single call (more efficient)
+ * @param outCpuPercent CPU output (0.0-100.0)
+ * @param outMemPercent Memory output (0.0-100.0)
+ * @return TRUE on success
+ * 
+ * @details Single cache refresh check for both metrics
+ */
+BOOL SystemMonitor_GetUsage(float* outCpuPercent, float* outMemPercent);
+
+/**
+ * @brief Refresh requested metrics and copy one internally consistent snapshot
+ * @param fields Bitwise combination of SystemMonitorSnapshotFields
+ * @param outSnapshot Receives cached values, timestamps, and revision
+ * @return TRUE when the monitor is initialized and the snapshot was copied
+ *
+ * @details CPU and memory are sampled as one pair. Network collection remains
+ * asynchronous; the snapshot contains the most recent completed network sample.
+ */
+BOOL SystemMonitor_GetSnapshot(DWORD fields,
+                               SystemMonitorSnapshot* outSnapshot);
+
+/**
+ * @brief Get network speed (active interfaces, excludes loopback)
+ * @param outUpBytesPerSec Upload speed output (bytes/sec)
+ * @param outDownBytesPerSec Download speed output (bytes/sec)
+ * @return TRUE on success
+ * 
+ * @details
+ * Calculates speed from interface byte-counter delta.
+ * Tracks each interface separately to improve multi-adapter accuracy.
+ * First call establishes baseline (returns 0.0).
+ * 
+ * @note Auto-initializes if needed
+ */
+BOOL SystemMonitor_GetNetSpeed(float* outUpBytesPerSec, float* outDownBytesPerSec);
+
+/**
+ * @brief Get battery charge percentage
+ * @param outPercent Output (0-100, or -1 if no battery)
+ * @return TRUE if battery present, FALSE if no battery or error
+ * 
+ * @details
+ * Uses GetSystemPowerStatus API. Returns FALSE for desktop PCs without battery.
+ */
+BOOL SystemMonitor_GetBatteryPercent(int* outPercent);
+
+#endif

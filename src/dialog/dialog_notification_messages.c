@@ -1,0 +1,142 @@
+/**
+ * @file dialog_notification_messages.c
+ * @brief Notification message text configuration dialog
+ */
+
+#include "dialog/dialog_notification.h"
+#include "dialog/dialog_common.h"
+#include "dialog/dialog_modern.h"
+#include "language.h"
+#include "config.h"
+#include "utils/string_convert.h"
+#include "../resource/resource.h"
+#include <string.h>
+#include <limits.h>
+
+/* ============================================================================
+ * Notification Messages Dialog
+ * ============================================================================ */
+
+void ShowNotificationMessagesDialog(HWND hwndParent) {
+    if (Dialog_IsOpen(DIALOG_INSTANCE_NOTIFICATION_MSG)) {
+        HWND existing = Dialog_GetInstance(DIALOG_INSTANCE_NOTIFICATION_MSG);
+        Dialog_FocusControl(existing, IDC_NOTIFICATION_EDIT1, TRUE);
+        return;
+    }
+
+    HWND hwndDlg = CreateDialogW(GetModuleHandle(NULL),
+              MAKEINTRESOURCE(CLOCK_IDD_NOTIFICATION_MESSAGES_DIALOG),
+              hwndParent,
+              NotificationMessagesDlgProc);
+
+    if (hwndDlg) {
+        DialogModern_ShowPaintedWindow(hwndDlg, SW_SHOW);
+        Dialog_FocusControl(hwndDlg, IDC_NOTIFICATION_EDIT1, TRUE);
+    }
+}
+
+INT_PTR CALLBACK NotificationMessagesDlgProc(HWND hwndDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+    (void)lParam;
+    DialogContext* ctx = Dialog_GetContext(hwndDlg);
+
+    switch (msg) {
+        case WM_INITDIALOG: {
+            Dialog_InitializeInstance(DIALOG_INSTANCE_NOTIFICATION_MSG, hwndDlg);
+
+            ctx = Dialog_CreateContext();
+            if (!ctx) {
+                Dialog_UnregisterInstanceForWindow(DIALOG_INSTANCE_NOTIFICATION_MSG, hwndDlg);
+                DestroyWindow(hwndDlg);
+                return TRUE;
+            }
+            Dialog_SetContext(hwndDlg, ctx);
+
+            SetWindowTextW(hwndDlg,
+                           GetLocalizedString(NULL, L"Notification Content"));
+            Dialog_CenterOnPrimaryScreen(hwndDlg);
+
+            wchar_t wideText[NOTIFICATION_MESSAGE_CHAR_BUFFER_SIZE] = {0};
+
+            MultiByteToWideChar(CP_UTF8, 0, g_AppConfig.notification.messages.timeout_message, -1,
+                                wideText, sizeof(wideText)/sizeof(wchar_t));
+            SetDlgItemTextW(hwndDlg, IDC_NOTIFICATION_EDIT1, wideText);
+
+            SetDlgItemTextW(hwndDlg, IDC_NOTIFICATION_LABEL1,
+                           GetLocalizedString(NULL, L"Countdown timeout message:"));
+
+            SetDlgItemTextW(hwndDlg, IDOK, GetLocalizedString(NULL, L"OK"));
+            SetDlgItemTextW(hwndDlg, IDCANCEL,
+                            GetLocalizedString(NULL, L"Cancel"));
+
+            HWND hEdit1 = GetDlgItem(hwndDlg, IDC_NOTIFICATION_EDIT1);
+
+            Dialog_SubclassEdit(hEdit1, ctx);
+
+            Dialog_SelectAllText(hEdit1);
+            SetFocus(hEdit1);
+
+            return FALSE;
+        }
+
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORBTN: {
+            INT_PTR result;
+            if (Dialog_HandleColorMessages(msg, wParam, ctx, &result)) {
+                return result;
+            }
+            break;
+        }
+
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK) {
+                wchar_t wTimeout[NOTIFICATION_MESSAGE_CHAR_BUFFER_SIZE] = {0};
+
+                GetDlgItemTextW(hwndDlg, IDC_NOTIFICATION_EDIT1, wTimeout, sizeof(wTimeout)/sizeof(wchar_t));
+
+                char timeout_msg[NOTIFICATION_MESSAGE_BUFFER_SIZE] = {0};
+
+                if (!WideToUtf8(wTimeout, timeout_msg, sizeof(timeout_msg))) {
+                    Dialog_ShowErrorAndRefocus(hwndDlg, IDC_NOTIFICATION_EDIT1);
+                    return TRUE;
+                }
+
+                if (!WriteConfigNotificationMessages(timeout_msg)) {
+                    Dialog_ShowErrorAndRefocus(hwndDlg, IDC_NOTIFICATION_EDIT1);
+                    return TRUE;
+                }
+
+                DestroyWindow(hwndDlg);
+                return TRUE;
+            } else if (LOWORD(wParam) == IDCANCEL) {
+                DestroyWindow(hwndDlg);
+                return TRUE;
+            }
+            break;
+
+        case WM_KEYDOWN:
+            if (wParam == VK_ESCAPE) {
+                DestroyWindow(hwndDlg);
+                return TRUE;
+            }
+            break;
+
+        case WM_CLOSE:
+            DestroyWindow(hwndDlg);
+            return TRUE;
+
+        case WM_DESTROY:
+            if (ctx) {
+                HWND hEdit1 = GetDlgItem(hwndDlg, IDC_NOTIFICATION_EDIT1);
+
+                if (hEdit1) Dialog_UnsubclassEdit(hEdit1, ctx);
+
+                Dialog_DestroyContext(hwndDlg);
+            }
+            Dialog_UnregisterInstanceForWindow(DIALOG_INSTANCE_NOTIFICATION_MSG, hwndDlg);
+            break;
+    }
+
+    return FALSE;
+}

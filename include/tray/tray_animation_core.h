@@ -1,0 +1,169 @@
+/**
+ * @file tray_animation_core.h
+ * @brief Animation lifecycle management and state coordination
+ * 
+ * Central coordinator that orchestrates decoder, loader, timer, and menu modules.
+ * Manages main and preview animation states.
+ */
+
+#ifndef TRAY_ANIMATION_CORE_H
+#define TRAY_ANIMATION_CORE_H
+
+#include <windows.h>
+
+#include "system_monitor.h"
+
+#define TRAY_ANIMATION_DEFAULT_INTERVAL_MS 150u
+#define TRAY_ANIMATION_MIN_INTERVAL_MS 20u
+#define TRAY_ANIMATION_MAX_INTERVAL_MS 60000u
+
+/**
+ * @brief Start animation system
+ * @param hwnd Window handle for message posting
+ * @param intervalMs Base interval for folder animations (default 150ms)
+ * 
+ * @details
+ * Initializes timer, loads animation from config, starts updates.
+ */
+void StartTrayAnimation(HWND hwnd, UINT intervalMs);
+
+/**
+ * @brief Stop animation and free all resources
+ * @param hwnd Window handle (for timer cleanup)
+ */
+void StopTrayAnimation(HWND hwnd);
+
+/**
+ * @brief Check whether the tray animation runtime is accepting updates
+ * @return TRUE if StartTrayAnimation has successfully started the runtime
+ */
+BOOL TrayAnimation_IsRunning(void);
+
+/**
+ * @brief Get current animation name
+ * @return Animation identifier (e.g., "__logo__", "cat.gif")
+ */
+const char* GetCurrentAnimationName(void);
+
+/**
+ * @brief Set animation and persist to config
+ * @param name Animation identifier
+ * @return TRUE if changed and loaded
+ * 
+ * @details
+ * Validates animation exists, loads frames, updates config.
+ * Seamlessly promotes preview if switching to current preview.
+ */
+BOOL SetCurrentAnimationName(const char* name);
+
+/**
+ * @brief Preview animation without persistence
+ * @param name Animation identifier
+ * @return TRUE if the request was queued, FALSE if runtime is unavailable or
+ *         the name is invalid
+ * 
+ * @details
+ * Loads into preview slot, displays immediately.
+ * Can be promoted to main via SetCurrentAnimationName or cancelled.
+ */
+BOOL StartAnimationPreview(const char* name);
+
+/**
+ * @brief Cancel preview and restore original animation
+ */
+void CancelAnimationPreview(void);
+
+/**
+ * @brief Preload animation from config (for startup)
+ * 
+ * @details
+ * Loads frames without starting timer.
+ * Called before tray icon creation to have first frame ready.
+ */
+void PreloadAnimationFromConfig(void);
+
+/**
+ * @brief Get first frame for tray icon creation
+ * @return HICON or NULL
+ */
+HICON GetInitialAnimationHicon(void);
+
+/**
+ * @brief Apply an animation path without persistence
+ * @param value Animation path or built-in animation name
+ * 
+ * @details
+ * Used when rebuilding the current process-local tray animation.
+ */
+void ApplyAnimationPathValueNoPersist(const char* value);
+
+/**
+ * @brief Set base interval for folder animations
+ * @param ms Interval in milliseconds (<=0 resets to 150ms)
+ */
+void TrayAnimation_SetBaseIntervalMs(UINT ms);
+
+/**
+ * @brief Set minimum interval floor
+ * @param ms Minimum interval (0 disables)
+ */
+void TrayAnimation_SetMinIntervalMs(UINT ms);
+
+/**
+ * @brief Invalidate cached animation timer delay scaling
+ */
+void TrayAnimation_RecomputeTimerDelay(void);
+
+/**
+ * @brief Clear current animation name to force reload on next apply
+ */
+void TrayAnimation_ClearCurrentName(void);
+
+/**
+ * @brief Update a dynamic builtin icon from one shared metrics snapshot
+ * @param snapshot Shared snapshot, or NULL for metrics-independent icons
+ * @param synchronizedTooltip Optional tooltip generated from the same snapshot
+ * @return TRUE when the tooltip was committed with an icon update
+ */
+BOOL TrayAnimation_UpdatePercentIconWithSnapshot(
+    const SystemMonitorSnapshot* snapshot,
+    const wchar_t* synchronizedTooltip);
+
+/**
+ * @brief Query refresh needs for the icon currently presented to Explorer
+ * @param needsSystemMonitor Receives TRUE for CPU/memory generated icons
+ * @return TRUE for percent or Caps Lock icons, including menu previews
+ */
+BOOL TrayAnimation_GetBuiltinRefreshNeeds(BOOL* needsSystemMonitor);
+
+/**
+ * @brief Handle WM_TRAY_UPDATE_ICON message (must run in main thread)
+ * @return TRUE if handled
+ */
+BOOL TrayAnimation_HandleUpdateMessage(HWND hwnd);
+
+/**
+ * @brief Refresh tray icon immediately from the current animation state
+ */
+void TrayAnimation_RefreshCurrentIcon(void);
+
+/**
+ * @brief Check whether an icon presentation is waiting to be flushed
+ */
+BOOL TrayAnimation_HasDeferredIconUpdate(void);
+
+/** @brief Returns TRUE while a menu-selected animation is being committed. */
+BOOL TrayAnimation_HasPendingCommit(void);
+
+/**
+ * @brief Queue animation preview from file path without persistence
+ */
+BOOL PreviewAnimationFromFile(HWND hwnd, const char* filePath);
+
+/**
+ * @brief Check if animation preview is currently active
+ * @return TRUE if animation preview is active
+ */
+extern BOOL g_isPreviewActive;
+
+#endif /* TRAY_ANIMATION_CORE_H */

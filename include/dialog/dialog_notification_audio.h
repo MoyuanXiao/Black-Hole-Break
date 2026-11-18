@@ -1,0 +1,114 @@
+/**
+ * @file dialog_notification_audio.h
+ * @brief Audio file management for notification settings dialog
+ */
+
+#ifndef DIALOG_NOTIFICATION_AUDIO_H
+#define DIALOG_NOTIFICATION_AUDIO_H
+
+#include <windows.h>
+#include <stddef.h>
+
+#define WM_NOTIFICATION_SOUND_PLAYBACK_COMPLETE (WM_APP + 100)
+#define WM_NOTIFICATION_SOUND_CACHE_UPDATED     (WM_APP + 101)
+
+/* ============================================================================
+ * Audio File Management
+ * ============================================================================ */
+
+/**
+ * @brief Populate combo box with available audio files
+ * @param hwndCombo Combo box handle
+ * @param currentFile Current selected file path (UTF-8, can be NULL or empty)
+ *
+ * @details
+ * Uses the cached audio folder scan for .mp3/.wav files and populates combo box.
+ * First two items are always "None" and "System Beep".
+ */
+void PopulateNotificationSoundComboBox(HWND hwndCombo, const char* currentFile);
+
+/**
+ * @brief Refresh combo box from the latest cached audio scan while preserving selection
+ * @param hwndCombo Sound combo box handle
+ */
+void RefreshNotificationSoundComboBox(HWND hwndCombo);
+
+/**
+ * @brief Reset shutdown state before using the notification sound cache
+ */
+void NotificationSoundCache_Initialize(void);
+
+/**
+ * @brief Request a background refresh of the notification sound cache
+ */
+void NotificationSoundCache_RequestScanAsync(void);
+
+/**
+ * @brief Register a window to receive WM_NOTIFICATION_SOUND_CACHE_UPDATED
+ * @param hwnd Window handle, or NULL to clear notification target
+ */
+void NotificationSoundCache_SetNotifyWindow(HWND hwnd);
+
+/**
+ * @brief Stop background notification sound scanning and clear cached state
+ */
+void NotificationSoundCache_Shutdown(void);
+
+/**
+ * @brief Resolve the selected combo item to a notification sound value
+ * @param hwndCombo Sound combo box handle
+ * @param outSoundFile Output buffer receiving "", "SYSTEM_BEEP", or UTF-8 file path
+ * @param outSize Output buffer size in bytes
+ * @return TRUE if resolved, FALSE if conversion/path construction failed
+ */
+BOOL GetSelectedNotificationSoundFile(HWND hwndCombo, char* outSoundFile, size_t outSize);
+
+/**
+ * @brief Handle sound test button click
+ * @param hwndDlg Parent dialog handle
+ * @param hwndCombo Sound combo box handle
+ * @param hwndSlider Volume slider handle
+ * @param isPlaying Pointer to playing state (modified by function)
+ * @return TRUE if operation succeeded
+ *
+ * @details
+ * If not playing: starts audio playback with selected file
+ * If playing: stops current playback
+ * Button text is updated automatically via callback.
+ */
+BOOL HandleSoundTestButton(HWND hwndDlg, HWND hwndCombo, HWND hwndSlider, BOOL* isPlaying);
+
+/**
+ * @brief Open sound directory in Explorer and refresh combo box
+ * @param hwndDlg Parent dialog handle
+ * @param hwndCombo Sound combo box handle
+ *
+ * @details
+ * Opens %LOCALAPPDATA%\BlackHoleBreak\resources\audio in Windows Explorer
+ * and requests a non-blocking cache refresh.
+ */
+void HandleSoundDirButton(HWND hwndDlg, HWND hwndCombo);
+
+/**
+ * @brief Request a background sound-list refresh when the dropdown opens
+ * @param hwndCombo Sound combo box handle
+ *
+ * @details
+ * Keeps the current popup contents intact while the audio folder is scanned.
+ * The dialog applies the new cache after the popup closes.
+ */
+void HandleSoundComboDropdown(HWND hwndCombo);
+
+/**
+ * @brief Setup audio playback complete callback for dialog
+ * @param hwndDlg Dialog handle (receives WM_APP+100 on completion)
+ */
+void SetupAudioPlaybackCallback(HWND hwndDlg);
+
+/**
+ * @brief Cleanup audio resources before dialog closes
+ * @param isPlaying Current playing state
+ */
+void CleanupAudioPlayback(BOOL isPlaying);
+
+#endif /* DIALOG_NOTIFICATION_AUDIO_H */
