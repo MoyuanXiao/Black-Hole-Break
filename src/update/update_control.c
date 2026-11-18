@@ -1,0 +1,259 @@
+/**
+ * @file update_control.c
+ * @brief Custom UI controls for update dialogs (scrollbar, markdown view)
+ */
+#include "update/update_internal.h"
+#include "markdown/markdown_parser.h"
+#include <windowsx.h>
+#include <commctrl.h>
+
+#ifdef _MSC_VER
+#pragma comment(lib, "comctl32.lib")
+#endif
+
+static int GetMouseWheelScrollAmount(int scrollPage) {
+    UINT wheelScrollLines = 3;
+    if (!SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &wheelScrollLines, 0)) {
+        wheelScrollLines = 3;
+    }
+    if (wheelScrollLines == WHEEL_PAGESCROLL) {
+        return scrollPage > 0 ? scrollPage : 60;
+    }
+    if (wheelScrollLines > 100) {
+        wheelScrollLines = 100;
+    }
+    return (int)wheelScrollLines * 20;
+}
+
+/** @brief Subclassed window procedure for scrollable notes control */
+LRESULT CALLBACK NotesControlProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+                                         UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+    UNREFERENCED_PARAMETER(dwRefData);
+    switch (msg) {
+        case WM_LBUTTONDOWN: {
+            int scrollPos = (int)(INT_PTR)GetProp(hwnd, L"ScrollPos");
+            int scrollMax = (int)(INT_PTR)GetProp(hwnd, L"ScrollMax");
+            int scrollPage = (int)(INT_PTR)GetProp(hwnd, L"ScrollPage");
+            scrollPos = UpdateClampScrollPosition(
+                scrollPos, scrollMax, scrollPage);
+
+            if (scrollMax > scrollPage) {
+                RECT clientRect;
+                GetClientRect(hwnd, &clientRect);
+
+                RECT thumbRect;
+                CalculateScrollbarThumbRect(clientRect, scrollPos, scrollMax, scrollPage, &thumbRect);
+
+                POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+
+                if (PtInRect(&thumbRect, pt)) {
+                    SetProp(hwnd, L"ThumbDragging", (HANDLE)1);
+                    SetProp(hwnd, L"DragStartY", (HANDLE)(INT_PTR)pt.y);
+                    SetProp(hwnd, L"DragStartScrollPos", (HANDLE)(INT_PTR)scrollPos);
+                    SetCapture(hwnd);
+                    return 0;
+                } else if (pt.x >= clientRect.right - MODERN_SCROLLBAR_WIDTH - MODERN_SCROLLBAR_MARGIN) {
+                    int trackHeight = clientRect.bottom - clientRect.top;
+                    (void)trackHeight;
+
+                    int oldScrollPos = scrollPos;
+                    if (pt.y < thumbRect.top) {
+                        scrollPos -= scrollPage;
+                    } else if (pt.y > thumbRect.bottom) {
+                        scrollPos += scrollPage;
+                    }
+
+                    scrollPos = UpdateClampScrollPosition(
+                        scrollPos, scrollMax, scrollPage);
+
+                    if (scrollPos != oldScrollPos) {
+                        SetProp(hwnd, L"ScrollPos", (HANDLE)(INT_PTR)scrollPos);
+                        InvalidateRect(hwnd, NULL, TRUE);
+                    }
+                    return 0;
+                }
+            }
+
+            MarkdownLink* links = (MarkdownLink*)GetProp(hwnd, L"MarkdownLinks");
+            int linkCount = (int)(INT_PTR)GetProp(hwnd, L"LinkCount");
+            scrollPos = (int)(INT_PTR)GetProp(hwnd, L"ScrollPos");
+
+            if (links && linkCount > 0) {
+                POINT pt;
+                pt.x = GET_X_LPARAM(lParam);
+                pt.y = GET_Y_LPARAM(lParam) + scrollPos;
+
+                if (HandleMarkdownClick(links, linkCount, pt)) {
+                    return 0;
+                }
+            }
+            return DefSubclassProc(hwnd, msg, wParam, lParam);
+        }
+
+        case WM_LBUTTONUP: {
+            if ((INT_PTR)GetProp(hwnd, L"ThumbDragging")) {
+                SetProp(hwnd, L"ThumbDragging", (HANDLE)0);
+                ReleaseCapture();
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            return 0;
+        }
+
+        case WM_MOUSEMOVE: {
+            POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+
+            if ((INT_PTR)GetProp(hwnd, L"ThumbDragging")) {
+                int dragStartY = (int)(INT_PTR)GetProp(hwnd, L"DragStartY");
+                int dragStartScrollPos = (int)(INT_PTR)GetProp(hwnd, L"DragStartScrollPos");
+                int scrollMax = (int)(INT_PTR)GetProp(hwnd, L"ScrollMax");
+                int scrollPage = (int)(INT_PTR)GetProp(hwnd, L"ScrollPage");
+                if (scrollMax <= scrollPage || scrollPage <= 0) {
+                    SetProp(hwnd, L"ScrollPos", (HANDLE)0);
+                    return 0;
+                }
+
+                RECT clientRect;
+                GetClientRect(hwnd, &clientRect);
+                int trackHeight = clientRect.bottom - clientRect.top;
+
+                int thumbHeight = (scrollMax > 0) ? (int)((float)scrollPage / scrollMax * trackHeight) : trackHeight;
+                if (thumbHeight < MODERN_SCROLLBAR_MIN_THUMB) thumbHeight = MODERN_SCROLLBAR_MIN_THUMB;
+                if (thumbHeight > trackHeight) thumbHeight = trackHeight;
+
+                int maxThumbTop = trackHeight - thumbHeight;
+                int deltaY = pt.y - dragStartY;
+                int deltaScroll = (maxThumbTop > 0) ? (int)((float)deltaY / maxThumbTop * (scrollMax - scrollPage)) : 0;
+
+                int oldScrollPos = (int)(INT_PTR)GetProp(hwnd, L"ScrollPos");
+                int newScrollPos = dragStartScrollPos + deltaScroll;
+                newScrollPos = UpdateClampScrollPosition(
+                    newScrollPos, scrollMax, scrollPage);
+
+                if (newScrollPos != oldScrollPos) {
+                    SetProp(hwnd, L"ScrollPos", (HANDLE)(INT_PTR)newScrollPos);
+                    InvalidateRect(hwnd, NULL, TRUE);
+                }
+                return 0;
+            }
+
+            int scrollPos = (int)(INT_PTR)GetProp(hwnd, L"ScrollPos");
+            int scrollMax = (int)(INT_PTR)GetProp(hwnd, L"ScrollMax");
+            int scrollPage = (int)(INT_PTR)GetProp(hwnd, L"ScrollPage");
+
+            if (scrollMax > scrollPage) {
+                RECT clientRect;
+                GetClientRect(hwnd, &clientRect);
+
+                RECT thumbRect;
+                CalculateScrollbarThumbRect(clientRect, scrollPos, scrollMax, scrollPage, &thumbRect);
+
+                BOOL wasHovered = (BOOL)(INT_PTR)GetProp(hwnd, L"ThumbHovered");
+                BOOL isHovered = PtInRect(&thumbRect, pt);
+
+                if (wasHovered != isHovered) {
+                    SetProp(hwnd, L"ThumbHovered", (HANDLE)(INT_PTR)isHovered);
+                    InvalidateRect(hwnd, NULL, TRUE);
+
+                    if (isHovered) {
+                        TRACKMOUSEEVENT tme = {0};
+                        tme.cbSize = sizeof(TRACKMOUSEEVENT);
+                        tme.dwFlags = TME_LEAVE;
+                        tme.hwndTrack = hwnd;
+                        TrackMouseEvent(&tme);
+                    }
+                }
+            }
+            return DefSubclassProc(hwnd, msg, wParam, lParam);
+        }
+
+        case WM_MOUSELEAVE: {
+            if ((INT_PTR)GetProp(hwnd, L"ThumbHovered")) {
+                SetProp(hwnd, L"ThumbHovered", (HANDLE)0);
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            return 0;
+        }
+
+        case WM_CAPTURECHANGED: {
+            if ((INT_PTR)GetProp(hwnd, L"ThumbDragging")) {
+                SetProp(hwnd, L"ThumbDragging", (HANDLE)0);
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            break;
+        }
+
+        case WM_CANCELMODE: {
+            if ((INT_PTR)GetProp(hwnd, L"ThumbDragging")) {
+                SetProp(hwnd, L"ThumbDragging", (HANDLE)0);
+                if (GetCapture() == hwnd) {
+                    ReleaseCapture();
+                }
+                InvalidateRect(hwnd, NULL, TRUE);
+                return 0;
+            }
+            break;
+        }
+
+        case WM_MOUSEWHEEL: {
+            int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+
+            int scrollPos = (int)(INT_PTR)GetProp(hwnd, L"ScrollPos");
+            int scrollMax = (int)(INT_PTR)GetProp(hwnd, L"ScrollMax");
+            int scrollPage = (int)(INT_PTR)GetProp(hwnd, L"ScrollPage");
+            if (scrollMax <= scrollPage || scrollPage <= 0) {
+                SetProp(hwnd, L"ScrollPos", (HANDLE)0);
+                return 0;
+            }
+
+            int scrollAmount = GetMouseWheelScrollAmount(scrollPage);
+            int oldScrollPos = scrollPos;
+            scrollPos -= (delta > 0 ? scrollAmount : -scrollAmount);
+            scrollPos = UpdateClampScrollPosition(
+                scrollPos, scrollMax, scrollPage);
+
+            if (scrollPos != oldScrollPos) {
+                SetProp(hwnd, L"ScrollPos", (HANDLE)(INT_PTR)scrollPos);
+                InvalidateRect(hwnd, NULL, TRUE);
+            }
+            return 0;
+        }
+
+        case WM_SETCURSOR: {
+            MarkdownLink* links = (MarkdownLink*)GetProp(hwnd, L"MarkdownLinks");
+            int linkCount = (int)(INT_PTR)GetProp(hwnd, L"LinkCount");
+            int scrollPos = (int)(INT_PTR)GetProp(hwnd, L"ScrollPos");
+
+            if (links && linkCount > 0) {
+                POINT pt;
+                GetCursorPos(&pt);
+                ScreenToClient(hwnd, &pt);
+                pt.y += scrollPos;
+
+                const wchar_t* url = GetClickedLinkUrl(links, linkCount, pt);
+                if (url) {
+                    SetCursor(LoadCursor(NULL, IDC_HAND));
+                    return TRUE;
+                }
+            }
+            break;
+        }
+
+        case WM_NCDESTROY:
+            if (GetCapture() == hwnd) {
+                ReleaseCapture();
+            }
+            RemoveProp(hwnd, L"ScrollPos");
+            RemoveProp(hwnd, L"ScrollMax");
+            RemoveProp(hwnd, L"ScrollPage");
+            RemoveProp(hwnd, L"ThumbDragging");
+            RemoveProp(hwnd, L"DragStartY");
+            RemoveProp(hwnd, L"DragStartScrollPos");
+            RemoveProp(hwnd, L"ThumbHovered");
+            RemoveProp(hwnd, L"MarkdownLinks");
+            RemoveProp(hwnd, L"LinkCount");
+            RemoveWindowSubclass(hwnd, NotesControlProc, uIdSubclass);
+            break;
+    }
+
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}

@@ -1,0 +1,16 @@
+VERIFICATION
+
+Verification is intended to assist the Chocolatey moderators and community in
+verifying that this package's contents are trustworthy.
+
+The installer downloads the official Black Hole Break release executable from:
+
+https://github.com/MoyuanXiao/Black-Hole-Break/releases/download/v1.6.2/BlackHoleBreak.exe
+
+The expected SHA256 checksum is:
+
+3de804deb0dfa1fbfb11b9b71d1bb0610ce80e57f90e7d20611210def00fff2a
+
+To verify manually, download the file and run:
+
+Get-FileHash .\BlackHoleBreak.exe -Algorithm SHA256

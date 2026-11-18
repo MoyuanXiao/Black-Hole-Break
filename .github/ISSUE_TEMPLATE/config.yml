@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions
+    url: https://github.com/MoyuanXiao/Black-Hole-Break/issues
+    about: Questions and ideas for Black Hole Break belong in this repository.

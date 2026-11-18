@@ -1,0 +1,101 @@
+/**
+ * @file log_exception.c
+ * @brief Exception handling and signal processing
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <windows.h>
+#include "log/log_exception.h"
+#include "log/log_core.h"
+#include "log.h"
+
+
+/** Atomic flag prevents deadlock in crash handler */
+static volatile LONG inCrashHandler = 0;
+
+static const char* GetSignalDescription(int signal) {
+    switch (signal) {
+        case SIGFPE:  return "Floating point exception";
+        case SIGILL:  return "Illegal instruction";
+        case SIGSEGV: return "Segmentation fault/memory access error";
+        case SIGTERM: return "Termination signal";
+        case SIGABRT: return "Abnormal termination/abort";
+        case SIGINT:  return "User interrupt";
+        default:      return "Unknown signal";
+    }
+}
+
+/**
+ * Lock-free crash handler prevents deadlock
+ * @note Skips critical section since crash may occur while holding it
+ */
+static void SignalHandler(int signal) {
+    if (InterlockedExchange(&inCrashHandler, 1) != 0) {
+        exit(signal);
+    }
+
+    const char* signalDesc = GetSignalDescription(signal);
+
+    /* No critical section to avoid deadlock */
+    HANDLE hLogFile = GetLogFileHandle();
+    if (hLogFile != INVALID_HANDLE_VALUE) {
+        char buffer[256];
+        int len = snprintf(buffer, sizeof(buffer),
+            "[FATAL] Fatal signal occurred: %s (signal number: %d)\n",
+            signalDesc, signal);
+        if (len > 0) {
+            if ((size_t)len >= sizeof(buffer)) {
+                len = (int)sizeof(buffer) - 1;
+                buffer[sizeof(buffer) - 2] = '\n';
+            }
+            DWORD written;
+            WriteFile(hLogFile, buffer, len, &written, NULL);
+            FlushFileBuffers(hLogFile);
+        }
+    }
+
+    /* Don't show MessageBox - just log to file and exit silently
+     * This provides better user experience and prevents blocking on error dialogs
+     * Users can check the log file for crash details */
+    exit(signal);
+}
+
+void SetupExceptionHandler(void) {
+    signal(SIGFPE, SignalHandler);
+    signal(SIGILL, SignalHandler);
+    signal(SIGSEGV, SignalHandler);
+    signal(SIGTERM, SignalHandler);
+    signal(SIGABRT, SignalHandler);
+    signal(SIGINT, SignalHandler);
+}
+
+void GetLastErrorDescription(DWORD errorCode, char* buffer, int bufferSize) {
+    if (!buffer || bufferSize <= 0) {
+        return;
+    }
+
+    LPWSTR messageBuffer = NULL;
+    DWORD size = FormatMessage(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
+        FORMAT_MESSAGE_FROM_SYSTEM |
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        errorCode,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPWSTR)&messageBuffer,
+        0, NULL);
+
+    if (size > 0) {
+        if (size >= 2 && messageBuffer[size-2] == L'\r' && messageBuffer[size-1] == L'\n') {
+            messageBuffer[size-2] = L'\0';
+        }
+
+        WideCharToMultiByte(CP_UTF8, 0, messageBuffer, -1, buffer, bufferSize, NULL, NULL);
+        LocalFree(messageBuffer);
+        return;
+    }
+
+    _snprintf_s(buffer, bufferSize, _TRUNCATE, "Unknown error (code: %lu)", errorCode);
+}

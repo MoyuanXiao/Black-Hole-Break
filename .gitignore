@@ -1,0 +1,35 @@
+# Keep build/ directory structure only
+build/*
+!build/.gitkeep
+build-*/
+output/
+
+*.exe
+*.out
+*.app
+*.o
+*.obj
+*.log
+*.tmp 
+*.res
+*.aps 
+
+# Build system temps
+.xmake/
+.idea/
+.vscode/
+.cursorrules
+.codex
+.codex/
+.claude/
+.aider*
+.gemini/
+.qwen/
+.opencode/
+.roo/
+.augment/
+.kiro
+
+# Project documentation
+CLAUDE.md
+.reference

@@ -1,0 +1,297 @@
+/**
+ * @file window_commands_timer.c
+ * @brief Timer and Pomodoro related command handlers
+ */
+
+#include "window_procedure/window_commands.h"
+#include "window_procedure/window_helpers.h"
+#include "window_procedure/window_procedure.h"
+#include "window_procedure/window_events.h"
+#include "window_procedure/window_utils.h"
+#include "tray/tray_events.h"
+#include "dialog/dialog_procedure.h"
+#include "dialog/dialog_common.h"
+#include "timer/timer.h"
+#include "timer/main_timer.h"
+#include "timer/timer_events.h"
+#include "config.h"
+#include "window.h"
+#include "pomodoro.h"
+#include "notification.h"
+#include "log.h"
+#include "utils/time_parser.h"
+#include "../resource/resource.h"
+#include <stdio.h>
+#include <string.h>
+
+extern wchar_t inputText[256];
+
+/* ============================================================================
+ * Custom Countdown
+ * ============================================================================ */
+
+LRESULT CmdCustomCountdown(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    /* Don't change timer state here - wait until user confirms input
+     * State will be changed in StartCountdownWithTime when dialog returns result */
+    
+    /* Use modeless dialog - result handled via WM_DIALOG_COUNTDOWN */
+    ShowCountdownInputDialog(hwnd);
+    return 0;
+}
+
+/* ============================================================================
+ * Timer Mode Commands
+ * ============================================================================ */
+
+LRESULT CmdShowCurrentTime(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    ToggleShowTimeMode(hwnd);
+    return 0;
+}
+
+LRESULT CmdCountUp(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    StartCountUp(hwnd);
+    return 0;
+}
+
+LRESULT CmdCountUpStart(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    CleanupBeforeTimerAction(hwnd);
+    
+    if (!CLOCK_COUNT_UP) {
+        TimerModeParams params = {0, TRUE, TRUE, TRUE};  /* showWindow = TRUE */
+        SwitchTimerMode(hwnd, TIMER_MODE_COUNTUP, &params);
+        MainTimer_Stop();
+        ResetTimerWithInterval(hwnd);
+    } else {
+        TogglePauseResumeTimer(hwnd);
+    }
+    InvalidateRect(hwnd, NULL, TRUE);
+    return 0;
+}
+
+LRESULT CmdCountUpReset(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    CleanupBeforeTimerAction(hwnd);
+    ResetTimer();
+    InvalidateRect(hwnd, NULL, TRUE);
+    return 0;
+}
+
+LRESULT CmdCountdownReset(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    CleanupBeforeTimerAction(hwnd);
+    if (CLOCK_COUNT_UP) CLOCK_COUNT_UP = false;
+    ResetTimer();
+    MainTimer_Stop();
+    ResetTimerWithInterval(hwnd);
+    InvalidateRect(hwnd, NULL, TRUE);
+    HandleWindowReset(hwnd);
+    return 0;
+}
+
+LRESULT CmdPauseResume(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    TogglePauseResumeTimer(hwnd);
+    return 0;
+}
+
+LRESULT CmdRestartTimer(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    RestartCurrentTimer(hwnd);
+    return 0;
+}
+
+/* ============================================================================
+ * Time Format Commands (Simplified)
+ * ============================================================================ */
+
+LRESULT CmdTimeFormat(HWND hwnd, TimeFormatType format) {
+    TimeFormatType previousFormat = g_AppConfig.display.time_format.format;
+    if (WriteConfigTimeFormat(format) &&
+        previousFormat != g_AppConfig.display.time_format.format) {
+        InvalidateRect(hwnd, NULL, TRUE);
+    }
+    return 0;
+}
+
+LRESULT CmdToggleMilliseconds(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    ToggleMilliseconds(hwnd);
+    return 0;
+}
+
+LRESULT Cmd24HourFormat(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    ToggleConfigBool(hwnd, CFG_KEY_USE_24HOUR, &CLOCK_USE_24HOUR, TRUE);
+    return 0;
+}
+
+LRESULT CmdShowSeconds(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    bool previousValue = CLOCK_SHOW_SECONDS;
+    ToggleConfigBool(hwnd, CFG_KEY_SHOW_SECONDS, &CLOCK_SHOW_SECONDS, TRUE);
+    if (previousValue != CLOCK_SHOW_SECONDS) {
+        ResetTimerWithInterval(hwnd);
+    }
+    return 0;
+}
+
+/* ============================================================================
+ * Timeout Action Commands (Simplified with table)
+ * ============================================================================ */
+
+typedef struct {
+    TimeoutActionType action;
+    const char* configStr;
+} TimeoutActionEntry;
+
+static const TimeoutActionEntry TIMEOUT_ACTIONS[] = {
+    {TIMEOUT_ACTION_SHOW_TIME, "SHOW_TIME"},
+    {TIMEOUT_ACTION_COUNT_UP,  "COUNT_UP"},
+    {TIMEOUT_ACTION_MESSAGE,   "MESSAGE"},
+    {TIMEOUT_ACTION_LOCK,      "LOCK"},
+    {TIMEOUT_ACTION_SHUTDOWN,  "SHUTDOWN"},
+    {TIMEOUT_ACTION_RESTART,   "RESTART"},
+    {TIMEOUT_ACTION_SLEEP,     "SLEEP"},
+};
+
+LRESULT CmdSetTimeoutAction(HWND hwnd, TimeoutActionType action) {
+    (void)hwnd;
+    Timer_ClearTimeoutSystemActionArm();
+    
+    for (size_t i = 0; i < sizeof(TIMEOUT_ACTIONS)/sizeof(TIMEOUT_ACTIONS[0]); i++) {
+        if (TIMEOUT_ACTIONS[i].action == action) {
+            if (WriteConfigTimeoutAction(TIMEOUT_ACTIONS[i].configStr)) {
+                Timer_ArmTimeoutSystemAction(action);
+            } else {
+                LOG_WARNING("Failed to save timeout action: %s",
+                            TIMEOUT_ACTIONS[i].configStr);
+            }
+            break;
+        }
+    }
+    return 0;
+}
+
+/* ============================================================================
+ * Startup Mode Commands (Simplified)
+ * ============================================================================ */
+
+LRESULT CmdSetStartupMode(HWND hwnd, const char* mode) {
+    SetStartupMode(hwnd, mode);
+    return 0;
+}
+
+LRESULT CmdSetCountdownTime(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    /* Use modeless dialog - config saved directly by dialog */
+    ShowStartupTimeDialog(hwnd);
+    return 0;
+}
+
+/* ============================================================================
+ * Pomodoro Commands
+ * ============================================================================ */
+
+LRESULT CmdPomodoroStart(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    StartPomodoroTimer(hwnd);
+    return 0;
+}
+
+LRESULT CmdPomodoroReset(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    CleanupBeforeTimerAction(hwnd);
+
+    current_pomodoro_phase = POMODORO_PHASE_IDLE;
+    current_pomodoro_time_index = 0;
+    complete_pomodoro_cycles = 0;
+
+    ResetTimer();
+
+    if (CLOCK_TOTAL_TIME == g_AppConfig.pomodoro.work_time ||
+        CLOCK_TOTAL_TIME == g_AppConfig.pomodoro.short_break ||
+        CLOCK_TOTAL_TIME == g_AppConfig.pomodoro.long_break) {
+        MainTimer_Stop();
+        ResetTimerWithInterval(hwnd);
+    }
+    
+    InvalidateRect(hwnd, NULL, TRUE);
+    HandleWindowReset(hwnd);
+    return 0;
+}
+
+LRESULT CmdPomodoroLoopCount(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    ShowPomodoroLoopDialog(hwnd);
+    return 0;
+}
+
+LRESULT CmdPomodoroCombo(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    ShowPomodoroComboDialog(hwnd);
+    return 0;
+}
+
+/* ============================================================================
+ * Time Options Configuration
+ * ============================================================================ */
+
+LRESULT CmdModifyTimeOptions(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    /* Use modeless dialog - result handled via WM_DIALOG_SHORTCUT */
+    ShowShortcutTimeDialog(hwnd);
+    return 0;
+}
+
+LRESULT CmdModifyDefaultTime(HWND hwnd, WPARAM wp, LPARAM lp) {
+    (void)wp; (void)lp;
+    /* Use modeless dialog - config saved directly by dialog */
+    ShowStartupTimeDialog(hwnd);
+    return 0;
+}
+
+/* ============================================================================
+ * Range Command Handlers
+ * ============================================================================ */
+
+BOOL HandleQuickCountdown(HWND hwnd, UINT cmd, int index) {
+    (void)cmd;
+    int timeOptionsCount = time_options_count;
+    if (timeOptionsCount < 0) timeOptionsCount = 0;
+    if (timeOptionsCount > MAX_TIME_OPTIONS) timeOptionsCount = MAX_TIME_OPTIONS;
+    if (index >= 0 && index < timeOptionsCount && time_options[index] > 0) {
+        CleanupBeforeTimerAction(hwnd);
+        StartCountdownWithTime(hwnd, time_options[index]);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL HandlePomodoroTime(HWND hwnd, UINT cmd, int index) {
+    (void)cmd;
+    return HandlePomodoroTimeConfig(hwnd, index);
+}
+
+/* ============================================================================
+ * Pomodoro Time Configuration
+ * ============================================================================ */
+
+BOOL HandlePomodoroTimeConfig(HWND hwnd, int selectedIndex) {
+    int timesCount = g_AppConfig.pomodoro.times_count;
+    if (timesCount < 0) timesCount = 0;
+    if (timesCount > (int)_countof(g_AppConfig.pomodoro.times)) {
+        timesCount = (int)_countof(g_AppConfig.pomodoro.times);
+    }
+    if (selectedIndex < 0 || selectedIndex >= timesCount ||
+        g_AppConfig.pomodoro.times[selectedIndex] <= 0) {
+        return FALSE;
+    }
+
+    /* Use modeless dialog - config saved directly by dialog */
+    ShowPomodoroTimeEditDialog(hwnd, selectedIndex);
+    return TRUE;
+}

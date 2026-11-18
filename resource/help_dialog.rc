@@ -1,0 +1,20 @@
+/**
+ * @file help_dialog.rc
+ * @brief CLI command reference help dialog
+ */
+#include <windows.h>
+#include "resource.h"
+
+/** @brief Comprehensive CLI help dialog with embedded usage documentation */
+IDD_CLI_HELP_DIALOG DIALOGEX 0, 0, 360, 260
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Black Hole Break CLI Help"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    /** Comprehensive CLI documentation in scrollable read-only text control */
+    CONTROL "",
+            IDC_CLI_HELP_EDIT, "EDIT", WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 10, 10, 340, 215
+    DEFPUSHBUTTON   "OK", IDOK, 285, 235, 65, 14
+END
+
+

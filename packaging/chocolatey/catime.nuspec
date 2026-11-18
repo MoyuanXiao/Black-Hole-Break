@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>blackholebreak</id>
+    <version>1.6.2</version>
+    <title>Black Hole Break</title>
+    <authors>MoyuanXiao</authors>
+    <owners>MoyuanXiao</owners>
+    <projectUrl>https://github.com/MoyuanXiao/Black-Hole-Break</projectUrl>
+    <projectSourceUrl>https://github.com/MoyuanXiao/Black-Hole-Break</projectSourceUrl>
+    <packageSourceUrl>https://github.com/MoyuanXiao/Black-Hole-Break/tree/main/packaging/chocolatey</packageSourceUrl>
+    <licenseUrl>https://github.com/MoyuanXiao/Black-Hole-Break/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <summary>A lightweight Windows 11 desktop Pomodoro timer with a black-hole finish.</summary>
+    <description>Black Hole Break is a lightweight, portable Windows desktop Pomodoro and timer tailored for Windows 11. When a Pomodoro work interval ends and the next interval is a break, the screen can curl into a black hole. This package is a derivative of Catime by vladelaina, under the Apache License 2.0.</description>
+    <releaseNotes>https://github.com/MoyuanXiao/Black-Hole-Break/releases/tag/v1.6.2</releaseNotes>
+    <tags>blackholebreak timer countdown pomodoro clock tray portable windows</tags>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

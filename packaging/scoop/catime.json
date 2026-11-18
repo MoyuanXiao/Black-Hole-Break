@@ -1,0 +1,21 @@
+{
+    "version": "1.6.2",
+    "description": "A lightweight Windows 11 desktop Pomodoro timer. When a work interval ends, the screen can curl into a black hole.",
+    "homepage": "https://github.com/MoyuanXiao/Black-Hole-Break",
+    "license": "Apache-2.0",
+    "url": "https://github.com/MoyuanXiao/Black-Hole-Break/releases/download/v1.6.2/BlackHoleBreak.exe#/BlackHoleBreak.exe",
+    "hash": "3de804deb0dfa1fbfb11b9b71d1bb0610ce80e57f90e7d20611210def00fff2a",
+    "bin": "BlackHoleBreak.exe",
+    "shortcuts": [
+        [
+            "BlackHoleBreak.exe",
+            "Black Hole Break"
+        ]
+    ],
+    "checkver": {
+        "github": "https://github.com/MoyuanXiao/Black-Hole-Break"
+    },
+    "autoupdate": {
+        "url": "https://github.com/MoyuanXiao/Black-Hole-Break/releases/download/v$version/BlackHoleBreak.exe#/BlackHoleBreak.exe"
+    }
+}
