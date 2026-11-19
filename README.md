@@ -2,7 +2,7 @@
 
 **一款极轻量化的桌面番茄钟。计时结束后，屏幕会出现震撼的黑洞特效。黑洞卷曲吞噬一切。**
 
-![Black Hole Break preview](docs/black_hole_effect_demo.mp4)
+https://github.com/user-attachments/assets/cb64d24a-d9dd-43cc-88cb-68a08df8c974
 
 Black Hole Break is a lightweight Windows desktop Pomodoro and timer, tailored for Windows 11. It stays small, runs efficiently, and keeps a clean runtime: one portable executable, no installer, and no junk left beside the program.
 
