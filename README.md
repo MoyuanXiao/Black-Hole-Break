@@ -6,6 +6,10 @@
 
 https://github.com/user-attachments/assets/cb64d24a-d9dd-43cc-88cb-68a08df8c974
 
+如果这个项目对你有用，请点亮星标，这对我非常重要。
+
+If this project is useful to you, please star the repository. It really matters.
+
 Black Hole Break is a lightweight Windows desktop Pomodoro and timer, tailored for Windows 11. It stays small, runs efficiently, and keeps a clean runtime: one portable executable, no installer, and no junk left beside the program.
 
 When a Pomodoro work interval ends and the next interval is a break, the desktop can curl into a black hole and swallow the screen. The effect is a short, full-screen GPU overlay. You can turn it on, and you can preview it before you rely on it.
@@ -75,7 +79,9 @@ chmod +x build.sh && ./build.sh
 
 ## Visual effects
 
-The black hole is the first full-screen effect. Other visual effects for the Pomodoro and timer are welcome. Open an issue or a pull request with the idea and the effect.
+黑洞特效只是开始。欢迎在这个工作的基础上，开发更加丰富的视觉效果。
+
+The black hole is only the first full-screen effect. You are welcome to build richer visual effects on this work, for the Pomodoro, the timer, or new overlays. Open an issue or a pull request with the idea and the effect.
 
 ## Attribution
 
